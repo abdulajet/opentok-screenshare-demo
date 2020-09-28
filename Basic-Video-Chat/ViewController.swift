@@ -12,11 +12,11 @@ import OpenTok
 // *** Fill the following variables using your own Project info  ***
 // ***            https://tokbox.com/account/#/                  ***
 // Replace with your OpenTok API key
-let kApiKey = "46884024"
+let kApiKey = ""
 // Replace with your generated session ID
-let kSessionId = "2_MX40Njg4NDAyNH5-MTYwMTA0OTI3MzExMn5QR3VZdk10b3N1RlhYUWlOT1dQL1lYOUZ-fg"
+let kSessionId = ""
 // Replace with your generated token
-let kToken = "T1==cGFydG5lcl9pZD00Njg4NDAyNCZzaWc9MmRjMDIyMDUzMWJmOTAzYzMyNWI5NWYzMDc0ZjAyMTZlMTgwY2FkMjpzZXNzaW9uX2lkPTJfTVg0ME5qZzROREF5Tkg1LU1UWXdNVEEwT1RJM016RXhNbjVRUjNWWmRrMTBiM04xUmxoWVVXbE9UMWRRTDFsWU9VWi1mZyZjcmVhdGVfdGltZT0xNjAxMDQ5MjgzJm5vbmNlPTAuMTMzMjA0Njk2MDQ2OTk0NiZyb2xlPW1vZGVyYXRvciZleHBpcmVfdGltZT0xNjAxMTM1NjgyJmluaXRpYWxfbGF5b3V0X2NsYXNzX2xpc3Q9"
+let kToken = ""
 
 let kWidgetHeight = 240
 let kWidgetWidth = 320
@@ -32,12 +32,6 @@ class ViewController: UIViewController {
         return OTPublisher(delegate: self, settings: settings)!
     }()
     
-    lazy var screenPublisher: OTPublisher = {
-        let settings = OTPublisherSettings()
-        settings.name = "\(UIDevice.current.name) screen"
-        return OTPublisher(delegate: self, settings: settings)!
-    }()
-    
     lazy var shareScreenButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Share Screen", for: .normal)
@@ -46,59 +40,27 @@ class ViewController: UIViewController {
         return button
     }()
     
-    lazy var stackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .vertical
-        stackView.alignment = .center
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
-    
     var subscriber: OTSubscriber?
-    var screenSubscriber: OTSubscriber?
     var sharingScreen = false
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.backgroundColor = .yellow
         
-        view.addSubview(stackView)
         view.addSubview(shareScreenButton)
         
         if #available(iOS 11.0, *) {
             NSLayoutConstraint.activate([
-                stackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-                stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                stackView.bottomAnchor.constraint(lessThanOrEqualTo: shareScreenButton.topAnchor),
-                
                 shareScreenButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
                 shareScreenButton.centerXAnchor.constraint(equalTo: view.centerXAnchor)
             ])
         }
-        
         doConnect()
     }
     
     @objc func shareScreenTapped() {
-        var error: OTError?
-        defer {
-            processError(error)
-        }
-        
-        
-        screenPublisher.videoType = .screen
-        screenPublisher.audioFallbackEnabled = false
-        let cap = ScreenCapturer(withView: view)
-        screenPublisher.videoCapture = cap
-        
-        session.publish(screenPublisher, error: &error)
-        
-        if let pubView = screenPublisher.view {
-            pubView.translatesAutoresizingMaskIntoConstraints = false
-            pubView.heightAnchor.constraint(equalToConstant: CGFloat(kWidgetHeight)).isActive = true
-            pubView.widthAnchor.constraint(equalToConstant: CGFloat(kWidgetWidth)).isActive = true
-            stackView.addArrangedSubview(pubView)
-        }
+        self.view.backgroundColor = .green
+        doPublish()
     }
     
     /**
@@ -125,14 +87,12 @@ class ViewController: UIViewController {
             processError(error)
         }
         
-        session.publish(publisher, error: &error)
+        publisher.videoType = .screen
+        publisher.audioFallbackEnabled = false
+        let cap = ScreenCapturer(withView: view)
+        publisher.videoCapture = cap
         
-        if let pubView = publisher.view {
-            pubView.translatesAutoresizingMaskIntoConstraints = false
-            pubView.heightAnchor.constraint(equalToConstant: CGFloat(kWidgetHeight)).isActive = true
-            pubView.widthAnchor.constraint(equalToConstant: CGFloat(kWidgetWidth)).isActive = true
-            stackView.addArrangedSubview(pubView)
-        }
+        session.publish(publisher, error: &error)
     }
     
     /**
@@ -153,7 +113,6 @@ class ViewController: UIViewController {
     
     fileprivate func cleanupSubscriber() {
         subscriber?.view?.removeFromSuperview()
-        screenSubscriber?.view?.removeFromSuperview()
         subscriber = nil
     }
     
@@ -176,7 +135,7 @@ class ViewController: UIViewController {
 extension ViewController: OTSessionDelegate {
     func sessionDidConnect(_ session: OTSession) {
         print("Session connected")
-        doPublish()
+//        doPublish()
     }
     
     func sessionDidDisconnect(_ session: OTSession) {
@@ -187,14 +146,6 @@ extension ViewController: OTSessionDelegate {
         print("Session streamCreated: \(stream.streamId)")
         if subscriber == nil {
             doSubscribe(stream)
-        } else {
-            var error: OTError?
-            defer {
-                processError(error)
-            }
-            screenSubscriber = OTSubscriber(stream: stream, delegate: self)
-            
-            session.subscribe(screenSubscriber!, error: &error)
         }
     }
     
@@ -233,10 +184,10 @@ extension ViewController: OTPublisherDelegate {
 extension ViewController: OTSubscriberDelegate {
     func subscriberDidConnect(toStream subscriberKit: OTSubscriberKit) {
         if let subsView = subscriber?.view {
-            subsView.translatesAutoresizingMaskIntoConstraints = false
-            subsView.heightAnchor.constraint(equalToConstant: CGFloat(kWidgetHeight)).isActive = true
-            subsView.widthAnchor.constraint(equalToConstant: CGFloat(kWidgetWidth)).isActive = true
-            stackView.addArrangedSubview(subsView)
+            subsView.frame = CGRect(x: 0, y: 0, width: Int(self.view.bounds.width), height: Int(self.view.bounds.height) - kWidgetHeight)
+            subsView.layer.borderColor = UIColor.red.cgColor
+            subsView.layer.borderWidth = 3
+            view.addSubview(subsView)
         }
     }
     
