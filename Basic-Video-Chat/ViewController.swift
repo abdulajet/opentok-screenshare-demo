@@ -149,9 +149,16 @@ class ViewController: UIViewController {
         subscribers.append(subscriber)
     }
     
-    fileprivate func cleanupSubscriber(subscriber: OTSubscriber?, index: Int) {
-        subscriber?.view?.removeFromSuperview()
-        subscribers.remove(at: index)
+    fileprivate func cleanupSubscriberIfNeeded(streamId: String) {
+        if streams.contains(streamId) {
+            for (index, subscriber) in subscribers.enumerated() {
+                if (subscriber?.stream?.streamId ?? "") == streamId {
+                    subscriber?.view?.removeFromSuperview()
+                    subscribers.remove(at: index)
+                }
+            }
+            streams.remove(at: streams.index(of: streamId)!)
+        }
     }
     
     fileprivate func cleanupPublisher(name: String?) {
@@ -194,15 +201,7 @@ extension ViewController: OTSessionDelegate {
     
     func session(_ session: OTSession, streamDestroyed stream: OTStream) {
         print("Session streamDestroyed: \(stream.streamId)")
-        
-        if streams.contains(stream.streamId) {
-            for (index, subscriber) in subscribers.enumerated() {
-                if (subscriber?.stream?.streamId ?? "") == stream.streamId {
-                    cleanupSubscriber(subscriber: subscriber, index: index)
-                }
-            }
-            streams.remove(at: streams.index(of: stream.streamId)!)
-        }
+        cleanupSubscriberIfNeeded(streamId: stream.streamId)
     }
     
     func session(_ session: OTSession, didFailWithError error: OTError) {
@@ -219,14 +218,7 @@ extension ViewController: OTPublisherDelegate {
     
     func publisher(_ publisher: OTPublisherKit, streamDestroyed stream: OTStream) {
         cleanupPublisher(name: publisher.name)
-        if streams.contains(stream.streamId) {
-            for (index, subscriber) in subscribers.enumerated() {
-                if streams.contains(subscriber?.stream?.streamId ?? "") {
-                    cleanupSubscriber(subscriber: subscriber, index: index)
-                }
-            }
-            streams.remove(at: streams.index(of: stream.streamId)!)
-        }
+        cleanupSubscriberIfNeeded(streamId: stream.streamId)
     }
     
     func publisher(_ publisher: OTPublisherKit, didFailWithError error: OTError) {
