@@ -32,6 +32,12 @@ class ViewController: UIViewController {
         return OTPublisher(delegate: self, settings: settings)!
     }()
     
+    lazy var screenPublisher: OTPublisher = {
+        let settings = OTPublisherSettings()
+        settings.name = "\(UIDevice.current.name) screen"
+        return OTPublisher(delegate: self, settings: settings)!
+    }()
+    
     lazy var shareScreenButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Share Screen", for: .normal)
@@ -40,7 +46,8 @@ class ViewController: UIViewController {
         return button
     }()
     
-    var subscriber: OTSubscriber?
+    var subscribers: [OTSubscriber?] = []
+    var streams: [String] = []
     var sharingScreen = false
     
     override func viewDidLoad() {
@@ -59,8 +66,13 @@ class ViewController: UIViewController {
     }
     
     @objc func shareScreenTapped() {
-        self.view.backgroundColor = .green
-        doPublish()
+        if sharingScreen {
+            self.view.backgroundColor = .yellow
+            stopScreenPublish()
+        } else {
+            self.view.backgroundColor = .green
+            doScreenPublish()
+        }
     }
     
     /**
@@ -87,12 +99,38 @@ class ViewController: UIViewController {
             processError(error)
         }
         
-        publisher.videoType = .screen
-        publisher.audioFallbackEnabled = false
-        let cap = ScreenCapturer(withView: view)
-        publisher.videoCapture = cap
-        
         session.publish(publisher, error: &error)
+        if let pubView = publisher.view {
+            pubView.frame = CGRect(x: 0, y: 0, width: Int(self.view.bounds.width), height: kWidgetHeight)
+            view.addSubview(pubView)
+        }
+    }
+    
+    fileprivate func stopScreenPublish() {
+        var error: OTError?
+        defer {
+            processError(error)
+        }
+        
+        session.unpublish(screenPublisher, error: &error)
+        sharingScreen = false
+        shareScreenButton.setTitle("Share Screen", for: .normal)
+    }
+    
+    fileprivate func doScreenPublish() {
+        var error: OTError?
+        defer {
+            processError(error)
+        }
+        
+        screenPublisher.videoType = .screen
+        screenPublisher.audioFallbackEnabled = false
+        let cap = ScreenCapturer(withView: view)
+        screenPublisher.videoCapture = cap
+        
+        session.publish(screenPublisher, error: &error)
+        sharingScreen = true
+        shareScreenButton.setTitle("Stop Sharing Screen", for: .normal)
     }
     
     /**
@@ -106,18 +144,22 @@ class ViewController: UIViewController {
         defer {
             processError(error)
         }
-        subscriber = OTSubscriber(stream: stream, delegate: self)
-        
+        let subscriber = OTSubscriber(stream: stream, delegate: self)
         session.subscribe(subscriber!, error: &error)
+        subscribers.append(subscriber)
     }
     
-    fileprivate func cleanupSubscriber() {
+    fileprivate func cleanupSubscriber(subscriber: OTSubscriber?, index: Int) {
         subscriber?.view?.removeFromSuperview()
-        subscriber = nil
+        subscribers.remove(at: index)
     }
     
-    fileprivate func cleanupPublisher() {
-        publisher.view?.removeFromSuperview()
+    fileprivate func cleanupPublisher(name: String?) {
+        if name!.contains("screen") {
+            screenPublisher.view?.removeFromSuperview()
+        } else {
+            publisher.view?.removeFromSuperview()
+        }
     }
     
     fileprivate func processError(_ error: OTError?) {
@@ -135,7 +177,7 @@ class ViewController: UIViewController {
 extension ViewController: OTSessionDelegate {
     func sessionDidConnect(_ session: OTSession) {
         print("Session connected")
-//        doPublish()
+        doPublish()
     }
     
     func sessionDidDisconnect(_ session: OTSession) {
@@ -144,15 +186,22 @@ extension ViewController: OTSessionDelegate {
     
     func session(_ session: OTSession, streamCreated stream: OTStream) {
         print("Session streamCreated: \(stream.streamId)")
-        if subscriber == nil {
+        streams.append(stream.streamId)
+        if subscribers.count != streams.count {
             doSubscribe(stream)
         }
     }
     
     func session(_ session: OTSession, streamDestroyed stream: OTStream) {
         print("Session streamDestroyed: \(stream.streamId)")
-        if let subStream = subscriber?.stream, subStream.streamId == stream.streamId {
-            cleanupSubscriber()
+        
+        if streams.contains(stream.streamId) {
+            for (index, subscriber) in subscribers.enumerated() {
+                if (subscriber?.stream?.streamId ?? "") == stream.streamId {
+                    cleanupSubscriber(subscriber: subscriber, index: index)
+                }
+            }
+            streams.remove(at: streams.index(of: stream.streamId)!)
         }
     }
     
@@ -169,9 +218,14 @@ extension ViewController: OTPublisherDelegate {
     }
     
     func publisher(_ publisher: OTPublisherKit, streamDestroyed stream: OTStream) {
-        cleanupPublisher()
-        if let subStream = subscriber?.stream, subStream.streamId == stream.streamId {
-            cleanupSubscriber()
+        cleanupPublisher(name: publisher.name)
+        if streams.contains(stream.streamId) {
+            for (index, subscriber) in subscribers.enumerated() {
+                if streams.contains(subscriber?.stream?.streamId ?? "") {
+                    cleanupSubscriber(subscriber: subscriber, index: index)
+                }
+            }
+            streams.remove(at: streams.index(of: stream.streamId)!)
         }
     }
     
@@ -183,9 +237,9 @@ extension ViewController: OTPublisherDelegate {
 // MARK: - OTSubscriber delegate callbacks
 extension ViewController: OTSubscriberDelegate {
     func subscriberDidConnect(toStream subscriberKit: OTSubscriberKit) {
-        if let subsView = subscriber?.view {
-            subsView.frame = CGRect(x: 0, y: 0, width: Int(self.view.bounds.width), height: Int(self.view.bounds.height) - kWidgetHeight)
-            subsView.layer.borderColor = UIColor.red.cgColor
+        if let subsView = subscribers.last??.view {
+            subsView.frame = CGRect(x: 0, y: kWidgetHeight * subscribers.count, width: Int(self.view.bounds.width), height: kWidgetHeight)
+            subsView.layer.borderColor = UIColor.blue.cgColor
             subsView.layer.borderWidth = 3
             view.addSubview(subsView)
         }
